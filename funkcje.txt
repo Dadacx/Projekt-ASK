@@ -1,0 +1,23 @@
+// Szkielety instrukcji
+    void exec_MOV_RegReg(uint8_t regA, uint8_t regB);
+    void exec_MOV_RegNat(uint8_t regA, uint8_t nat);
+    void exec_MOV_RegMem(uint8_t regA, uint8_t segmentBit, uint8_t offset);
+    void exec_MOV_SegReg(uint8_t segmentBit, uint8_t regA);
+
+    void exec_ADD_RegReg(uint8_t regA, uint8_t regB);
+    void exec_ADD_RegNat(uint8_t regA, uint8_t nat);
+    void exec_SUB_RegReg(uint8_t regA, uint8_t regB);
+    void exec_SUB_RegNat(uint8_t regA, uint8_t nat);
+
+    void exec_CMP_RegNat(uint8_t regA, uint8_t nat);
+    void exec_CMP_RegReg(uint8_t regA, uint8_t regB);
+
+    void exec_LOGIC(uint8_t regA, uint8_t func, uint8_t nat);
+
+    void exec_Jcc(uint8_t condition, uint8_t address);
+    void exec_CALL(uint8_t mode, uint8_t regA, uint8_t address);
+
+    void exec_PUSH_POP(uint8_t mode, uint8_t regA);
+    void exec_MOVS();
+
+    void updateFlags(uint16_t result);

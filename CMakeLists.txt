@@ -3,4 +3,6 @@ project(Projekt_Ask)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_executable(Projekt_Ask main.cpp)
+add_executable(Projekt_Ask main.cpp
+        Microprocessor.cpp
+        Microprocessor.h)
