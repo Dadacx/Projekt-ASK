@@ -10,9 +10,34 @@ Microprocessor::Microprocessor() {
     SP = 4095;
 }
 
-void Microprocessor::loadProgram(const std::array<uint8_t, MEMORY_SIZE> &program) {
+void Microprocessor::loadProgram(const array<uint8_t, MEMORY_SIZE> &program) {
     memory = program;
     PC = 0;
+}
+
+bool Microprocessor::loadProgramFromFile(string filename) {
+    ifstream file(filename);
+
+    if (!file.is_open()) {
+        cerr << "Blad: Nie mozna otworzyc pliku " << filename << endl;
+        return false;
+    }
+
+    // wyzerowanie pamięci przed wczytaniem nowego programu
+    memory.fill(0);
+
+    unsigned int address = 0;
+    string line;
+
+    // Pobieranie kolejnych wartości do pamięci
+    while (file >> line && address < MEMORY_SIZE) {
+        bitset<8> byteValue(line);
+        memory[address] = static_cast<uint8_t>(byteValue.to_ulong());
+        address++;
+    }
+
+    file.close();
+    return true;
 }
 
 void Microprocessor::run() {

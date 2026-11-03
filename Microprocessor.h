@@ -3,6 +3,7 @@
 
 #include <array>
 #include <cstdint>
+#include <fstream>
 
 using namespace std;
 
@@ -82,6 +83,7 @@ public:
     Microprocessor();
 
     void loadProgram(const array<uint8_t, MEMORY_SIZE>& program);
+    bool loadProgramFromFile(string filename);
 
     void run();
     void step();
