@@ -82,6 +82,7 @@ private:
 public:
     Microprocessor();
 
+    // ładowanie programu (ze zmiennej lub z pliku)
     void loadProgram(const array<uint8_t, MEMORY_SIZE>& program);
     bool loadProgramFromFile(string filename);
 
