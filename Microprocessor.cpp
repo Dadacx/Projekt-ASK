@@ -4,17 +4,16 @@
 #include <windows.h>
 #include "Microprocessor.h"
 
+using namespace std;
+
 Microprocessor::Microprocessor() {
     memory.fill(0);
-    CS = 0;
-    DS = 0;
-    PC = 0;
-    SP = 4095;
+    reset();
 }
 
 void Microprocessor::loadProgram(const array<uint8_t, MEMORY_SIZE> &program) {
     memory = program;
-    PC = 0;
+    reset();
 }
 
 bool Microprocessor::loadProgramFromFile(string filename) {
@@ -39,8 +38,7 @@ bool Microprocessor::loadProgramFromFile(string filename) {
         }
     }
 
-    PC = 0;
-    file.close();
+    reset();
     return true;
 }
 
@@ -48,7 +46,7 @@ void Microprocessor::run() {
     bool isRunning = true;
     displayRegs();
 
-    while (isRunning) {
+    while (isRunning && !halted) {
         if (PC >= MEMORY_SIZE) {
             isRunning = false;
             break;
@@ -61,23 +59,53 @@ void Microprocessor::run() {
 }
 
 void Microprocessor::step() {
-    if (PC < MEMORY_SIZE) {
-        // Opóźnienie (w sekundach) przed wykonaniem kolejnej instrukcji.
-        // delay = 0 (domyślnie) → brak oczekiwania.
-        if (delay > 0) {
-            Sleep(static_cast<DWORD>(delay) * 1000);
-        }
+    if (halted || PC >= MEMORY_SIZE) return;
 
-        uint8_t instruction = fetch();
-        decodeAndExecute(instruction);
+    // Opóźnienie (w sekundach) przed wykonaniem kolejnej instrukcji.
+    // delay = 0 (domyślnie) → brak oczekiwania.
+    if (delay > 0) {
+        Sleep(static_cast<DWORD>(delay) * 1000);
     }
+
+    stepOnce();
+}
+
+void Microprocessor::stepOnce() {
+    if (halted || PC >= MEMORY_SIZE) return;
+
+    const uint16_t address = calculatePhysicalAddress(CS, PC);
+    uint8_t instruction = fetch();
+
+    lastInstr.address = address;
+    lastInstr.opcode  = (instruction >> 4) & 0b1111;
+    lastInstr.args    = instruction & 0b1111;
+    lastInstr.operand = 0;
+    lastInstr.length  = 1;
+    lastInstr.access[0] = 0xFFFF;
+    lastInstr.access[1] = 0xFFFF;
+    lastInstr.accessKind[0] = 0;
+    lastInstr.accessKind[1] = 0;
+
+    decodeAndExecute(instruction);
+    ++cycleCount;
 }
 
 void Microprocessor::reset() {
+    R[0] = R[1] = R[2] = R[3] = 0;
     CS = 0;
     DS = 0;
     PC = 0;
-    SP = 4095;
+    SP = MEMORY_SIZE - 1;
+
+    Flags.ZF = 0;
+    Flags.SF = 0;
+    Flags.CF = 0;
+    Flags.OF = 0;
+    Flags.unused = 0;
+
+    halted = false;
+    cycleCount = 0;
+    lastInstr = InstructionInfo{};
 }
 
 void Microprocessor::displayRegs() {
@@ -85,7 +113,8 @@ void Microprocessor::displayRegs() {
     cout << endl;
     cout << "Segmenty:\tCS=" << (int)CS << ",\tDS=" << (int)DS << endl;
     cout << "Liczniki:\tPC=" << PC << ",\tSP=" << SP << endl;
-    cout << "Flagi:\tZF=" << (int)Flags.ZF << ",\tSF=" << (int)Flags.SF << ",\tCF=" << (int)Flags.CF << ",\tOF=" << (int)Flags.OF << endl;
+    cout << "Flagi:\tZF=" << (int)Flags.ZF << ",\tSF=" << (int)Flags.SF
+         << ",\tCF=" << (int)Flags.CF << ",\tOF=" << (int)Flags.OF << endl;
 }
 
 uint8_t Microprocessor::fetch() {
@@ -102,69 +131,96 @@ void Microprocessor::decodeAndExecute(uint8_t instruction) {
     uint8_t aa = (args >> 2) & 0b11;
     uint8_t bb = args & 0b11;
 
-    cout << "opcode: " << bitset<4>(opcode) << "\t args: " << bitset<4>(args) << endl;
+    // Większość rozkazów pobiera drugi bajt (natychmiastowy / adres).
+    // Wyjątki: operacje rejestr-rejestr, stos, MOVS i MOV segmentu.
+    // CALL zawsze pobiera bajt 2 (nawet w trybie m=0 – tak jak w oryginalnej implementacji).
+    bool hasOperand = true;
+    switch (opcode) {
+        case OP_MOV_REG_REG:
+        case OP_ADD_REG_REG:
+        case OP_SUB_REG_REG:
+        case OP_CMP_REG_REG:
+        case OP_STACK:
+        case OP_MOVS:
+        case OP_MOV_SEG_REG:
+            hasOperand = false;
+            break;
+        default:
+            break;
+    }
+
+    uint8_t operand = hasOperand ? fetch() : 0;
+
+    lastInstr.opcode  = opcode;
+    lastInstr.args    = args;
+    lastInstr.operand = operand;
+    lastInstr.length  = hasOperand ? 2 : 1;
+
+    if (trace) {
+        cout << "opcode: " << bitset<4>(opcode) << "\t args: " << bitset<4>(args) << endl;
+    }
 
     switch (opcode) {
         case OP_MOV_REG_REG:
             exec_MOV_RegReg(aa, bb);
             break;
         case OP_MOV_REG_NAT:
-            exec_MOV_RegNat(aa, fetch());
+            exec_MOV_RegNat(aa, operand);
             break;
         case OP_MOV_REG_MEM:
-            // cout << "Odczyt z pamieci" << endl;
-            // bit s (wyciągnięty z args) decyduje z którego segmentu otczyujemy
-            exec_MOV_RegMem(aa,(bb >> 1) & 0b1,fetch());
+            // bit s (wyciągnięty z args) decyduje z którego segmentu odczytujemy
+            exec_MOV_RegMem(aa, (bb >> 1) & 0b1, operand);
             break;
         case OP_ADD_REG_REG:
             exec_ADD_RegReg(aa, bb);
             break;
         case OP_ADD_REG_NAT:
-            exec_ADD_RegNat(aa, fetch());
+            exec_ADD_RegNat(aa, operand);
             break;
         case OP_SUB_REG_REG:
             exec_SUB_RegReg(aa, bb);
             break;
         case OP_SUB_REG_NAT:
-            exec_SUB_RegNat(aa, fetch());
+            exec_SUB_RegNat(aa, operand);
             break;
         case OP_CMP_REG_NAT:
-            exec_CMP_RegNat(aa, fetch());
+            exec_CMP_RegNat(aa, operand);
             break;
         case OP_CMP_REG_REG:
             exec_CMP_RegReg(aa, bb);
             break;
         case OP_LOGIC:
-            exec_LOGIC(aa, bb, fetch());
+            exec_LOGIC(aa, bb, operand);
             break;
         case OP_JCC:
-            exec_Jcc(aa, fetch());
+            exec_Jcc(aa, operand);
             break;
         case OP_CALL:
             // bit m (wyciągnięty z args) decyduje skąd bierzemy adres skoku
-            exec_CALL((args >> 1) & 1, aa, fetch());
+            exec_CALL((args >> 1) & 1, aa, operand);
             break;
         case OP_STACK:
             // bit p (wyciągnięty z args) mówi czy to PUSH czy POP
             exec_PUSH_POP((args >> 1) & 1, aa);
             break;
         case OP_MOVS:
-            // Operacja lancuchowa: domyslnie 1 bajt z DS:[R1] do DS:[R2]
+            // Operacja łańcuchowa: domyślnie 1 bajt z DS:[R1] do DS:[R2]
             exec_MOVS();
             break;
         case OP_MOV_SEG_REG:
-            // cout << "Ladowanie segmentu (jeszcze do zrobienia)" << endl;
             // bit s (wyciągnięty z args) ustala segment dla którego zmieniamy wartość
             exec_MOV_SegReg((aa >> 1) & 0b1, bb);
             break;
         default:
-            cout << "Nieznany rozkaz" << endl;
-            exit(-1);
+            // Nieznany kod rozkazu pełni rolę HALT. W trybie GUI nie możemy
+            // wywoływać exit() – zamiast tego zaznaczamy koniec programu.
+            if (trace) cout << "Nieznany rozkaz -> HALT" << endl;
+            halted = true;
             break;
     }
 }
 
-uint16_t Microprocessor::calculatePhysicalAddress(uint8_t segmentReg, uint8_t offset) {
+uint16_t Microprocessor::calculatePhysicalAddress(uint8_t segmentReg, uint8_t offset) const {
     return (segmentReg * 256) + offset;
 }
 
@@ -181,6 +237,9 @@ void Microprocessor::exec_MOV_RegNat(uint8_t regA, uint8_t nat) {
 void Microprocessor::exec_MOV_RegMem(uint8_t regA, uint8_t segmentBit, uint8_t offset) {
     uint8_t segment = segmentBit == 0 ? CS : DS;
     uint16_t physicalAddress = calculatePhysicalAddress(segment, offset);
+
+    lastInstr.access[0] = physicalAddress;
+    lastInstr.accessKind[0] = 1;   // dane
 
     R[regA] = memory[physicalAddress];
 }
@@ -314,8 +373,12 @@ void Microprocessor::exec_PUSH_POP(uint8_t mode, uint8_t regA) {
         // PUSH - zmniejszamy wskaźnik SP i odkładamy wartość z rejestru do pamięci
         SP--;
         memory[SP] = R[regA];
+        lastInstr.access[0] = SP;
+        lastInstr.accessKind[0] = 2;   // stos
     } else {
         // POP - czytamy wartość z pamięci do rejestru i podnosimy wskaźnik SP
+        lastInstr.access[0] = SP;
+        lastInstr.accessKind[0] = 2;   // stos
         R[regA] = memory[SP];
         SP++;
     }
@@ -326,8 +389,13 @@ void Microprocessor::exec_CALL(uint8_t mode, uint8_t regA, uint8_t address) {
     // PC jest 16-bitowe, a pamięć ma 8 bitów, więc dzielimy adres na dwie połówki
     SP--;
     memory[SP] = (PC >> 8) & 0xFF; // Starszy bajt
+    lastInstr.access[0] = SP;
+    lastInstr.accessKind[0] = 2;   // stos
+
     SP--;
     memory[SP] = PC & 0xFF;        // Młodszy bajt
+    lastInstr.access[1] = SP;
+    lastInstr.accessKind[1] = 2;   // stos
 
     // Fizyczny skok pod wskazany adres
     if (mode == 0) {
@@ -343,6 +411,11 @@ void Microprocessor::exec_MOVS() {
     // są inkrementowane (adresowanie indeksowe operacji łańcuchowej).
     uint16_t sourceAddress = calculatePhysicalAddress(DS, R[1]);
     uint16_t destinationAddress = calculatePhysicalAddress(DS, R[2]);
+
+    lastInstr.access[0] = sourceAddress;
+    lastInstr.accessKind[0] = 3;   // MOVS źródło
+    lastInstr.access[1] = destinationAddress;
+    lastInstr.accessKind[1] = 4;   // MOVS cel
 
     memory[destinationAddress] = memory[sourceAddress];
 

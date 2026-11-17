@@ -1,0 +1,41 @@
+> PROGRAM PREZENTACYJNY DLA MIKROPROCESORA ASK-8
+> CS = 0 (kod), DS = 15 (dane w 0x0F00-0x0FFF, z dala od kodu).
+> Pokazuje: PUSH/POP, MOVS, odczyt DS:[...], petle CMP/JG, CALL, OR i HALT.
+
+00010000 00001111   > MOV R0, 15       (R0 = 15 - numer segmentu danych)
+11111000            > MOV DS, R0       (DS = 15 -> dane w 0x0F00-0x0FFF)
+
+00010100 00101010   > MOV R1, 42       (0x2A - pierwsza liczba)
+11010100            > PUSH R1          (SP: [0xFFE] = 0x2A)
+00010100 00000111   > MOV R1, 7        (0x07 - druga liczba)
+11010100            > PUSH R1          (SP: [0xFFD] = 0x07)
+
+00010100 11111101   > MOV R1, 253      (offset 0xFD -> DS:[0xFD] = 0x0FFD)
+00011000 01000000   > MOV R2, 64       (offset 0x40 -> DS:[0x40] = 0x0F40)
+11100000            > MOVS             (DS:[0x40] = 07; R1 = 0xFE, R2 = 0x41)
+11100000            > MOVS             (DS:[0x41] = 2A; R1 = 0xFF, R2 = 0x42)
+
+00101110 01000000   > MOV R3, DS:[64]  (R3 = 07)
+00101110 01000001   > MOV R3, DS:[65]  (R3 = 2A)
+
+00010000 00000100   > MOV R0, 4        (licznik petli)
+00011000 00000000   > MOV R2, 0        (suma)
+00011100 00000001   > MOV R3, 1        (skladnik)
+
+01001011            > PETLA: ADD R2, R3 (suma += skladnik)
+01011100 00000001   > ADD R3, 1        (skladnik++)
+01110000 00000001   > SUB R0, 1        (licznik--)
+10000000 00000000   > CMP R0, 0        (flagi ZF/SF/OF)
+10111000 00011001   > JG 25            (jesli R0 > 0, skok do 0x19)
+
+11000010 00101000   > CALL 40          (skok do 0x28; adres powrotu 0x24 na stosie)
+
+00101110 01000000   > POWRAT: MOV R3, DS:[64]  (R3 = 07 - dane przetrwaly CALL)
+01000011            > ADD R0, R3       (R0 = 0 + 7 = 7)
+00110000            > HALT             (0x27 - koniec programu)
+
+00010100 11111111   > PODPROGRAM 0x28: MOV R1, 255
+10100101 00000001   > OR R1, 1         (R1 = 0xFF | 1 = 0xFF, flagi logiczne)
+11011010            > POP R2           (odrzucenie mlodszego bajtu adresu powrotu)
+11011010            > POP R2           (odrzucenie starszego bajtu, SP = 0xFFD)
+10110000 00100100   > JMP 36           (powrot do 0x24)

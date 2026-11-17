@@ -1,12 +1,18 @@
 #include <array>
 #include "Microprocessor.h"
+#include "ProgramConfig.h"
 
 using namespace std;
 
+// Plik programu używany przez obie wersje aplikacji.
+const char *const programFileName = "../program.txt";
+
+// Wersja GUI linkuje ten plik tylko po to, aby pobrać stąd nazwę programu.
+// Definicja main() jest wyłączona, żeby nie kolidować z WinMain().
+#ifndef ASK_GUI_BUILD
 int main() {
     Microprocessor cpu;
     // array<uint8_t, 4096> program = {0}; // Cała pamięć wyzerowana
-    const string programFileName = "../program.txt";
 
     // Przykładowy program: MOV R1, 5;  MOV R3, R1
     // program[0] = 0b00010100;
@@ -20,3 +26,4 @@ int main() {
     cpu.run();
     return 0;
 }
+#endif
