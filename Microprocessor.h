@@ -88,6 +88,9 @@ public:
 
     void run();
     void step();
+    void reset();
+
+    unsigned int delay = 0; // opóźnienie przed każdym krokiem (w sekundach)
 
     // Funkcje wyświetlające
     void displayRegs();

@@ -16,6 +16,7 @@ int main() {
 
     // cpu.loadProgram(program);
     if (!cpu.loadProgramFromFile(programFileName)) return 1;
+    cpu.delay = 1;
     cpu.run();
     return 0;
 }
